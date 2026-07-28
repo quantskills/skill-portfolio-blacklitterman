@@ -1,0 +1,12 @@
+{
+  "name": "skill-portfolio-blacklitterman",
+  "description": "Black-Litterman 组合优化：以沪深300 指数权重为先验，用动量/反转/换手率三条因子视图更新，输出 CSV + Markdown 长权重报告。",
+  "tags": ["quant", "portfolio", "black-litterman", "optimization"],
+  "version": "0.1.0",
+  "author": "forest808",
+  "scripts": {
+    "portfolio": "scripts/portfolio.py"
+  },
+  "data_source": "panda_data",
+  "asset_type": "stock"
+}
