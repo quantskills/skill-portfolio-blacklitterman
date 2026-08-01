@@ -65,7 +65,42 @@ Ledoit-Wolf shrinkage on 252 交易日日收益，年化 ×252。任意含 NaN �
 
 ## Agent 触发流程（本 skill 的正式用法）
 
-用户提问命中「何时触发」后，按四步执行，**不要跳步、不要问用户参数**：
+用户提问命中「何时触发」后，按五步执行，**不要跳步、不要问用户参数**：
+
+### Step 0 · 凭证预检（必须先做，未通过不进入 Step 1）
+
+本 skill 依赖 `panda_data` 服务，需要两个环境变量：
+
+- `PANDA_DATA_USERNAME`
+- `PANDA_DATA_PASSWORD`
+
+**Agent 执行前先探测这两个变量**（Bash 是非交互 shell，`~/.zshrc` 里 export 的变量不会自动进来，须显式 source）：
+
+```bash
+set -a && source ~/.zshrc >/dev/null 2>&1 && set +a && \
+if [ -z "$PANDA_DATA_USERNAME" ] || [ -z "$PANDA_DATA_PASSWORD" ]; then \
+    echo "MISSING_CREDENTIALS"; \
+else \
+    echo "OK: user=$PANDA_DATA_USERNAME"; \
+fi
+```
+
+**如果输出 `MISSING_CREDENTIALS`**：**立刻停下**，不要继续 Step 1/2/3/4。用下面这段话回复用户（照抄，把 `〈说明〉` 位置替换成实际情况）：
+
+> 跑这个 skill 需要先配置 panda_data 的账号凭证，你还没设置。请按下面两步操作：
+>
+> 1. 打开 `~/.zshrc`（或 `~/.bashrc`，看你用哪个 shell），在文件末尾加两行：
+>    ```bash
+>    export PANDA_DATA_USERNAME="你的 panda_data 用户名"
+>    export PANDA_DATA_PASSWORD="你的 panda_data 密码"
+>    ```
+> 2. 保存后，在终端执行 `source ~/.zshrc`（bash 用户执行 `source ~/.bashrc`）让变量生效。
+>
+> 配置好之后，再问我一次"跑一下 BL 组合"，我就能跑了。
+>
+> 如果你还没有 panda_data 账号，需要先在 panda_data 官网注册。
+
+**如果输出 `OK: user=...`**：凭证具备，进入 Step 1。
 
 ### Step 1 · 决定扫描日期
 
@@ -82,7 +117,7 @@ set -a && source ~/.zshrc >/dev/null 2>&1 && set +a && \
 ```
 
 - 环境是 conda `pandaai`（Python 3.10，`panda_data` 已装）
-- 凭证 `PANDA_DATA_USERNAME` / `PANDA_DATA_PASSWORD` 在 `~/.zshrc`（非交互 shell 须显式 source）
+- 凭证已在 Step 0 预检过；这里 `source ~/.zshrc` 是把变量注入到非交互 Bash
 - 默认参数 `delta=2.5, tau=0.05, view_return=0.05`，v0.1.0 首次校准已确认**三视图默认符号方向都对**，无需 `--flip_*`
 - exit code：0 OK / 1 panda_data 异常 / 2 该日无指数权重 / 3 池空 / 4 字段自检失败 / 5 Σ 非 PSD
 
