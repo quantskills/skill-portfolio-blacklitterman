@@ -1,15 +1,22 @@
 ---
 name: skill-portfolio-blacklitterman
-description: Black-Litterman 组合优化。以沪深300 指数权重为先验，用动量/反转/换手率三条因子视图更新，输出长权重 CSV + Markdown 报告。
+description: Black-Litterman 组合优化 —— 用户问「跑一下 BL 组合」「基于视图的组合权重」「相对沪深300 的主动配置」「动量/反转/换手视图对权重的影响」类问题时触发。以沪深300 指数权重为先验，用动量/反转/换手率三条因子视图更新，输出长权重组合，按「样式② 结构化播报」呈现给用户。
 tags: [quant, portfolio, black-litterman, optimization]
 ---
 
 # Black-Litterman 组合优化
 
-## 适用场景
-- 想在给定日期基于沪深300 生成一份"相对指数带主观视图"的长权重组合
-- 想跟踪三条常见因子视图（动量/反转/换手率）当前把权重推向哪些股票、推走哪些股票
-- 想产出可插入下游回测/交易的 CSV 权重表
+## 何时触发本 skill
+
+用户提问命中下列语义时，自动调用：
+
+- 「跑一下 BL / Black-Litterman 组合」「BL 优化」
+- 「基于视图的组合权重」「今日/YYYYMMDD 的主动配置」
+- 「动量/反转/换手视图现在指向哪些股票」
+- 「相对沪深300 应该超配/低配什么」
+- 「三条因子视图今天给出什么方向」
+
+**不触发**：单只股票的多空判断、无视图的等权/市值配置、期货/港美股组合（本 skill 仅 A 股沪深300 成分）。
 
 ## 数据接口（panda_data）
 
@@ -56,24 +63,93 @@ Ledoit-Wolf shrinkage on 252 交易日日收益，年化 ×252。任意含 NaN �
 闭式解 `w = (δΣ)⁻¹ μ_bl`，负权重截断为 0，重新归一化到 sum=1。
 若所有 μ_bl ≤ 0 → 回退至 w_prior，日志打 WARN，仍以 exit=0 收尾。
 
-## 使用方式
+## Agent 触发流程（本 skill 的正式用法）
+
+用户提问命中「何时触发」后，按四步执行，**不要跳步、不要问用户参数**：
+
+### Step 1 · 决定扫描日期
+
+- 用户明说了日期 → 换算为 `YYYYMMDD` 用作 `--date`
+- 用户没说 → 省略 `--date`，让 portfolio 自动取最近可用交易日
+- 用户说"最近"、"这一周" → 仍按单日跑（本 skill 是快照分配器，不做滚动）
+
+### Step 2 · 调用（推荐一行）
 
 ```bash
-# 认证
-export PANDA_DATA_USERNAME=...
-export PANDA_DATA_PASSWORD=...
+cd /Users/since/Code/quantskills/skill-portfolio-blacklitterman && \
+set -a && source ~/.zshrc >/dev/null 2>&1 && set +a && \
+/opt/miniconda3/envs/pandaai/bin/python scripts/portfolio.py [--date YYYYMMDD]
+```
 
-# 字段自检
-python -m scripts.data --self-check --date 20260721
+- 环境是 conda `pandaai`（Python 3.10，`panda_data` 已装）
+- 凭证 `PANDA_DATA_USERNAME` / `PANDA_DATA_PASSWORD` 在 `~/.zshrc`（非交互 shell 须显式 source）
+- 默认参数 `delta=2.5, tau=0.05, view_return=0.05`，v0.1.0 首次校准已确认**三视图默认符号方向都对**，无需 `--flip_*`
+- exit code：0 OK / 1 panda_data 异常 / 2 该日无指数权重 / 3 池空 / 4 字段自检失败 / 5 Σ 非 PSD
 
-# 默认扫描
-python scripts/portfolio.py
+### Step 3 · 读取输出
 
-# 指定日期
-python scripts/portfolio.py --date 20260721
+产物固定在两个位置：
 
-# 全参数
-python scripts/portfolio.py --date 20260721 \
+- `output/portfolio_YYYYMMDD.csv` —— 每股一行的全量权重表，字段见「输出」
+- `output/portfolio_YYYYMMDD.md` —— Top 10 超配 / 低配 + 三视图 top-3 + 一句解读
+
+**直接读 `.md`** 拿排行，需要权重绝对值、`mu_bl` 或 `in_view_*` 明细再看 `.csv`。
+
+### Step 4 · 用「样式② 结构化播报」呈现
+
+**不要**把 CSV 路径丢给用户，也**不要**贴 markdown 原文。按固定六段呈现：
+
+```
+BL 组合优化 · 沪深300 · YYYYMMDD（池 N 只）
+
+▎主线判断：<一句话，见下表>
+
+▎最大超配（关注视图共振的加仓方向）
+- <symbol>：Δw +X.XX%（w_prior X.XX% → w_bl X.XX%），active <如 +MOM +TUR>
+- <symbol>：Δw +X.XX%，active <...>
+- <symbol>：Δw +X.XX%，active <...>
+
+▎最大低配（关注视图共振的减仓方向）
+- <symbol>：Δw -X.XX%（w_prior X.XX% → w_bl X.XX%），active <如 -MOM -TUR>
+- <symbol>：Δw -X.XX%
+- <symbol>：Δw -X.XX%
+
+▎视图诊断（三视图分别把权重推向哪里）
+- 动量：多 <top3 symbol> · 空 <top3 symbol>
+- 反转：多 <top3> · 空 <top3>
+- 换手：多 <top3> · 空 <top3>
+
+▎组合特征
+- 相对指数换手 |Δw|.sum/2 ≈ XX.XX%
+- long-only 裁剪：M 只被截到 0
+- w_bl.sum 校验：1.00000... （若非 1e-6 内须显式提示）
+```
+
+**主线判断话术表**：
+
+| 场景 | 话术 |
+|---|---|
+| 视图强共振（top3 超配/低配都是三视图重叠） | 「三视图共振，明确方向配置：加 <行业主题> / 减 <行业主题>」 |
+| 视图分歧（超配和低配的视图标签零散） | 「三视图分歧，主要靠单一视图推动，方向弱信号」 |
+| 换手 ≤ 5% | 「视图对权重推动微弱，组合接近指数复制」 |
+| 退化路径（回退至 w_prior，output MD 有"degenerate"提示） | 「所有后验预期收益非正，已回退至指数权重（视图与协方差冲突）」 |
+
+**数据侧特殊情况**（Agent 必须显式说明）：
+
+- **`get_index_weights` 未取到 weight → 回退等权**（output MD 会有 WARN） → 呈现时须写："先验权重回退至等权（`get_index_weights` 未返回 weight 字段），组合结果需谨慎"
+- **exit 5（Σ 非 PSD）** → "协方差矩阵在 Ledoit-Wolf + jitter 后仍非正定，无法优化，请换日期或调 `--cov_lookback`"
+- **exit 3（池空）** → "该日过滤后无满足条件的成分股，可能是非交易日或数据缺失"
+
+**行业归因（可选，需读 CSV 时）**：如果用户追问"为什么加这些",看 `active views` 列里最频繁出现的组合（+MOM +TUR 通常意味着"高动量 + 低换手"，即被市场稳定推动的价值股）。
+
+**收尾一句**（可选）：如果用户看起来还会追问，加"如需看具体股票、翻转视图符号、或换日期，告诉我"。
+
+## 参数调整（用户主动要求时才调）
+
+用户明确说要翻符号、调 `view_return`、换指数等，透传对应 CLI 参数：
+
+```bash
+python scripts/portfolio.py --date YYYYMMDD \
     --index_symbol 000300.SH \
     --delta 2.5 --tau 0.05 --view_return 0.05 \
     --cov_lookback 252 --fetch_days 400 \
@@ -81,6 +157,15 @@ python scripts/portfolio.py --date 20260721 \
     --min_valid_days 200 \
     --flip_mom --flip_rev --flip_turnover \
     --output_dir output/
+```
+
+否则一律用默认阈值。
+
+## 开发者入口（不用于 Agent 触发路径）
+
+```bash
+# 字段自检（升级 panda_data 后手动跑一次）
+python -m scripts.data --self-check --date 20260729
 
 # 单元测试
 pytest tests/ -v
