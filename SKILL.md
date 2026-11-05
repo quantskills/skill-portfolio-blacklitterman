@@ -252,3 +252,7 @@ pytest tests/ -v
 - 无滚动回测；快照分配器而非研究框架。
 - 反转 / 换手率视图的符号约定为通用截面股票配置，可能需 `--flip_*` 校准。
 - `get_index_weights` 文档示例调用未取 `weight`；实测若缺失 → 回退等权 + WARN。
+
+## Pandadata compatibility
+
+[Pandadata 1.0.6 compatibility](references/pandadata-compatibility.md) — exact SDK baseline, validation scope, and shared guidance for all supported agent runtimes.
