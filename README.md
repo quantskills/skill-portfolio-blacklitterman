@@ -14,3 +14,6 @@ python scripts/portfolio.py --date 20260721         # single-day BL run
 ```
 
 Outputs land in `output/portfolio_YYYYMMDD.csv` + `.md`.
+
+
+Pandadata 兼容维护：[abgyjaguo](https://github.com/abgyjaguo)，保留原项目作者署名。
